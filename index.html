@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Backrooms: Escape Together - Mobile Co-Op Prototype</title>
+<style>
+  html,body{margin:0;padding:0;overflow:hidden;background:#111;font-family:sans-serif;touch-action:none;}
+  #ui{position:fixed;top:0;left:0;width:100%;z-index:10;pointer-events:none;}
+  #lobbyScreen{position:fixed;inset:0;background:#000d;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;z-index:50;color:#fff;}
+  #lobbyScreen input{font-size:22px;padding:10px;width:200px;text-align:center;text-transform:uppercase;}
+  #lobbyScreen button{font-size:20px;padding:10px 20px;margin-top:12px;}
+  #joyLeft,#joyRight{position:fixed;bottom:30px;width:130px;height:130px;border-radius:50%;
+    background:rgba(255,255,255,0.08);border:2px solid rgba(255,255,255,0.3);pointer-events:auto;}
+  #joyLeft{left:20px;}
+  #joyRight{right:20px;}
+  #joyLeftStick,#joyRightStick{position:absolute;width:55px;height:55px;border-radius:50%;
+    background:rgba(255,255,255,0.4);left:37px;top:37px;}
+  #flashlightBtn,#talkBtn,#radioBtn{position:fixed;pointer-events:auto;bottom:180px;
+    padding:14px;border-radius:50%;background:rgba(255,200,0,0.25);color:#fff;border:2px solid #ffcc00;
+    font-size:13px;width:60px;height:60px;text-align:center;}
+  #flashlightBtn{right:30px;}
+  #talkBtn{right:100px;bottom:120px;background:rgba(0,150,255,0.25);border-color:#00aaff;}
+  #radioBtn{right:170px;bottom:120px;background:rgba(255,0,0,0.25);border-color:#ff3333;}
+  #hud{position:fixed;top:10px;left:10px;color:#fff;font-size:13px;background:#0007;padding:6px 10px;border-radius:6px;}
+  #inventory{position:fixed;top:10px;right:10px;color:#fff;font-size:12px;background:#0007;padding:6px 10px;border-radius:6px;text-align:right;}
+  #sanityBar{position:fixed;left:10px;top:56px;width:160px;height:10px;background:#0007;border-radius:5px;overflow:hidden;border:1px solid #555;}
+  #sanityFill{width:100%;height:100%;background:linear-gradient(90deg,#5bb3ff,#2e7cd6);transition:width .3s;}
+  #sanityLabel{position:fixed;left:10px;top:68px;color:#9fd0ff;font-size:11px;background:#0007;padding:2px 6px;border-radius:4px;}
+  #pitPrompt{position:fixed;bottom:230px;left:50%;transform:translateX(-50%);color:#fff;
+    background:#000a;padding:8px 14px;border-radius:8px;font-size:13px;display:none;pointer-events:none;}
+  #blueScreen{position:fixed;inset:0;background:#0a1a33;z-index:80;display:none;
+    color:#cfe6ff;flex-direction:column;align-items:center;justify-content:center;text-align:center;
+    font-family:monospace;}
+  #blueScreen h1{font-size:26px;letter-spacing:2px;}
+  #blueScreen p{max-width:80%;font-size:14px;color:#8fb8e6;}
+  #blueScreen button{margin-top:18px;font-size:16px;padding:10px 22px;background:#1c3a63;color:#cfe6ff;
+    border:1px solid #4a7bb5;border-radius:6px;}
+  #spectateBanner{position:fixed;top:0;left:0;width:100%;text-align:center;color:#cfe6ff;
+    background:#0a1a33cc;padding:8px;font-size:13px;z-index:40;display:none;}
+</style>
+</head>
+<body>
+
+<div id="lobbyScreen">
+  <h2>Backrooms Co-Op</h2>
+  <p>Bir oda kodu gir ya da yenisini oluştur (2 arkadaş aynı kodu kullanmalı)</p>
+  <input id="roomInput" maxlength="6" placeholder="ODA KODU">
+  <button id="joinBtn">Odaya Katıl / Oluştur</button>
+  <p id="lobbyStatus" style="font-size:12px;color:#aaa;"></p>
+</div>
+
+<div id="ui">
+  <div id="hud">Seviye: <span id="levelLabel">0</span> | Ping: <span id="pingLabel">-</span>ms</div>
+  <div id="inventory">Fener: <span id="battLabel">100%</span><br>Anahtar: <span id="keyLabel">Yok</span></div>
+</div>
+<div id="sanityBar"><div id="sanityFill"></div></div>
+<div id="sanityLabel">Akıl Sağlığı: <span id="sanityValue">100</span>%</div>
+<div id="pitPrompt">Saklanmak için çukura gir (dokun) 🕳️</div>
+
+<div id="joyLeft"><div id="joyLeftStick"></div></div>
+<div id="joyRight"><div id="joyRightStick"></div></div>
+<div id="flashlightBtn">Fener</div>
+<div id="talkBtn">🎙️ Bas-Konuş</div>
+<div id="radioBtn">📻 Telsiz</div>
+
+<div id="spectateBanner">👻 İzleyici modundasın — arkadaşın hala hayatta, oyun bitmedi</div>
+<div id="blueScreen">
+  <h1>AKIL SAĞLIĞIN TÜKENDİ</h1>
+  <p id="blueScreenMsg">Zihnin Backrooms'un derinliklerinde kayboldu...</p>
+  <button id="respawnBtn" style="display:none;">Yeniden Başla</button>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<script>
+const SERVER_URL = "https://SENIN-SUNUCU-ADRESIN.onrender.com"; // <-- GUIDE.md adım 6'ya bak
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x050505);
+scene.fog = new THREE.FogExp2(0x111111, 0.06);
+
+const camera = new THREE.PerspectiveCamera(75, innerWidth/innerHeight, 0.1, 1000);
+const renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+document.body.appendChild(renderer.domElement);
+
+const flashlight = new THREE.SpotLight(0xffe9a8, 3, 22, Math.PI/6, 0.4, 1.5);
+flashlight.castShadow = false;
+camera.add(flashlight);
+flashlight.position.set(0,0,0);
+flashlight.target.position.set(0,0,-1);
+camera.add(flashlight.target);
+scene.add(camera);
+
+const ambient = new THREE.AmbientLight(0x332b1a, 0.25);
+scene.add(ambient);
+
+const wallMat = new THREE.MeshStandardMaterial({color:0xd8c98a, roughness:1});
+const floorMat = new THREE.MeshStandardMaterial({color:0x8a7a4a, roughness:1});
+const ceilMat = new THREE.MeshStandardMaterial({color:0xbba85e, roughness:1});
+
+const pitMat = new THREE.MeshStandardMaterial({color:0x2a2210, roughness:1});
+const pits = [];
+const pickups = [];
+
+function buildYellowRoomLevel
